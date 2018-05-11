@@ -78,6 +78,32 @@ function M:string_to_card(card_string)
   return card
 end
 
+--- Converts a hand's string representation to its numeric representation. Only 1 or 2 holdcards supported for now
+-- @param card_string the string representation of a hand
+-- @return the numeric representation of the hand
+function M:string_to_hand(hand_string)
+    assert(string.len(hand_string) == 2 * game_settings.holecard_count)
+    assert(game_settings.holecard_count == 1 or game_settings.holecard_count == 2)
+    if game_settings.holecard_count == 1 then
+        local card = M.string_to_card_table[hand_string]
+        assert(card > 0 and card <= game_settings.card_count )
+        return card
+    end
+
+    local hand_vec = {}
+    for i = 1, game_settings.holecard_count do
+        local card = M.string_to_card_table[string.sub(hand_string, 2 * i - 1, 2 * i)]
+        assert(card > 0 and card <= game_settings.card_count )
+        table.insert(hand_vec, card)
+    end
+    assert(hand_vec[1] ~= hand_vec[2])
+    table.sort(hand_vec, function(a,b) return a > b end)
+    -- (x,y) => (x-1) * (x-2)/2 + (x-y)
+    local hand = (hand_vec[1] - 1) * (hand_vec[1] - 2) / 2 + (hand_vec[1] - hand_vec[2])
+    assert(hand > 0 and hand <= game_settings.card_count * (game_settings.card_count - 1) / 2)
+    return hand
+end
+
 --- Converts a string representing zero or one board cards to a 
 -- vector of numeric representations.
 -- @param card_string either the empty string or a string representation of a 
@@ -90,8 +116,16 @@ function M:string_to_board(card_string)
   if card_string == '' then
     return arguments.Tensor{}
   end
-  
-  return arguments.Tensor{self:string_to_card(card_string)}
+  assert(string.len(card_string) % 2 == 0 and string.len(card_string) / 2 <= game_settings.board_card_count)
+  local board = {} 
+  for i = 1,string.len(card_string) / 2 do
+      local card = self:string_to_card(string.sub(card_string, 2 * i - 1, 2 * i))
+      table.insert(board, card)
+  end
+  local out = arguments.Tensor(board)
+  assert(out:nDimension() == 1 and out:size(1) == string.len(card_string) / 2)
+  return out
+
 end
 
 return M

@@ -16,5 +16,9 @@ M.card_count = M.suit_count * M.rank_count;
 M.board_card_count = 1;
 --- the number of players in the game
 M.player_count = 2
+--- first player for each street
+M.first_player = {1, 1}
+--- the number of holecards
+M.holecard_count = 1
 
 return M

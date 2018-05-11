@@ -6,6 +6,7 @@
 -- @classmod protocol_to_node
 local arguments = require 'Settings.arguments'
 local constants = require "Settings.constants"
+local game_settings = require "Settings.game_settings"
 local tools = require 'tools'
 local card_to_string = require "Game.card_to_string_conversion"
 
@@ -97,9 +98,9 @@ function ACPCProtocolToNode:_parse_state(state)
   local position
   local hand_id
   local _
- 
-    _, _, position, hand_id, actions, cards = string.find(state, "^MATCHSTATE:(%d):(%d*):([^:]*):(.*)")
-  
+
+  _, _, position, hand_id, actions, cards = string.find(state, "^MATCHSTATE:(%d):(%d*):([^:]*):(.*)")
+
   print('position: ', position)
   print('actions: ', actions)
   print('cards: ', cards)
@@ -107,20 +108,46 @@ function ACPCProtocolToNode:_parse_state(state)
   --cc/r8146c/cc/cc
   local preflop_actions
   local flop_actions
-    _, _, preflop_actions, flop_actions = string.find(actions, "([^/]*)/?([^/]*)")
-  
+  local turn_actions
+  local river_actions
+  _, _, preflop_actions, flop_actions, turn_actions, river_actions = string.find(actions, "([^/]*)/?([^/]*)/?([^/]*)/?([^/]*)")
+
   print('preflop_actions: ', preflop_actions)
   print('flop_actions: ', flop_actions)
-  
+  if constants.streets_count >= 3 then
+      print('turn_actions: ', turn_actions)
+  end
+  if constants.streets_count >= 3 then
+      print('river_actions: ', river_actions)
+  end
+
   --4cTs|Qs9s/9h5d8d/6c/6d
   local hand_p1
   local hand_p2
   local flop
-   
-   _, _, hand_p1, hand_p2, flop = string.find(cards, "([^|]*)|([^/]*)/?([^/]*)")
-  print('hand_sb: ', hand_sb)
-  print('hand_bb: ', hand_bb)
+  local turn
+  local river
+  local current_street
+
+  _, _, hand_p1, hand_p2, flop, turn, river = string.find(cards, "([^|]*)|([^/]*)/?([^/]*)/?([^/]*)/?([^/]*)")
+  if flop == "" then
+      current_street = 1
+  elseif turn == "" then
+      current_street = 2
+  elseif river == "" then
+      current_street = 3
+  else
+      current_street = 4
+  end
+  print('hand_p1: ', hand_p1)
+  print('hand_p2: ', hand_p2)
   print('flop: ', flop)
+  if constants.streets_count >= 3 then
+      print('turn: ', turn)
+  end
+  if constants.streets_count >= 4 then
+      print('river: ', river)
+  end
 
   local out = {}
   
@@ -130,12 +157,27 @@ function ACPCProtocolToNode:_parse_state(state)
   out.actions = {}
   out.actions[1] = self:_parse_actions(preflop_actions)
   out.actions[2] = self:_parse_actions(flop_actions)
+  if constants.streets_count >= 3 then
+      out.actions[3] = self:_parse_actions(turn_actions)
+  end
+  if constants.streets_count >= 4 then
+      out.actions[4] = self:_parse_actions(river_actions)
+  end
   
   out.actions_raw = {}
   out.actions_raw[1] = preflop_actions
   out.actions_raw[2] = flop_actions
+  if constants.streets_count >= 3 then
+      out.actions_raw[3] = turn_actions
+  end
+  if constants.streets_count >= 4 then
+      out.actions_raw[4] = river_actions
+  end
   
-  out.board = flop
+  out.board = flop..turn..river
+  out.current_street = current_street
+  print('board: ', out.board)
+  print('current_street: ', out.current_street)
   
   out.hand_p1 = hand_p1
   out.hand_p2 = hand_p2
@@ -151,7 +193,9 @@ end
 -- @local
 function ACPCProtocolToNode:_convert_actions_street(actions, street, all_actions)
 
-  local street_first_player = constants.players.P1
+  --local street_first_player = constants.players.P1
+  assert(street <= #game_settings.first_player)
+  local street_first_player = game_settings.first_player[street]
 
   for i=1, #actions do
     local acting_player = -1
@@ -179,7 +223,7 @@ function ACPCProtocolToNode:_convert_actions(actions)
   
   local all_actions = {}
 
-  for street = 1, 2 do
+  for street = 1, #actions do
     self:_convert_actions_street(actions[street], street, all_actions)
   end
   
@@ -228,11 +272,7 @@ function ACPCProtocolToNode:_process_parsed_state(parsed_state)
   
   local out = {}
   --1.0 figure out the current street
-  local current_street = 1
-  
-  if parsed_state.board ~= '' then
-    current_street = 2
-  end
+  local current_street = parsed_state.current_street
   
   print('current_street: ', current_street)
   
@@ -261,7 +301,8 @@ function ACPCProtocolToNode:_process_parsed_state(parsed_state)
   else
     out.hand_string = parsed_state.hand_p2  
   end
-  out.hand_id = card_to_string:string_to_card(out.hand_string)
+  --out.hand_id = card_to_string:string_to_card(out.hand_string)
+  out.hand_id = card_to_string:string_to_hand(out.hand_string)
   
   local acting_player = self:_get_acting_player(out)
   print('acting_player: ', acting_player)
@@ -297,14 +338,13 @@ function ACPCProtocolToNode:_compute_bets(processed_state)
   end
   
 
-  local first_p1_action = {action = constants.acpc_actions.raise, raise_amount = arguments.ante, player = constants.players.P1, street = 1}
-  local first_p2_action = {action = constants.acpc_actions.raise, raise_amount = arguments.ante, player = constants.players.P2, street = 2}
+  local first_p1_action = {action = constants.acpc_actions.raise, raise_amount = arguments.ante + arguments.big_blind, player = constants.players.P1, street = 1}
+  local first_p2_action = {action = constants.acpc_actions.raise, raise_amount = arguments.ante + arguments.small_blind, player = constants.players.P2, street = 1}
   
   local last_action = first_p1_action
   local prev_last_action = first_p2_action
-  
-  local prev_last_bet = first_p2_action
-  
+  local prev_last_bet = first_p1_action
+
   for i = 1, #processed_state.all_actions do
     
     local action = processed_state.all_actions[i]
@@ -367,14 +407,14 @@ function ACPCProtocolToNode:_get_acting_player(processed_state)
   
   if #processed_state.all_actions == 0  then
     assert(processed_state.current_street == 1)
-    return constants.players.P1
+    return game_settings.first_player[processed_state.current_street]
   end
   
   local last_action = processed_state.all_actions[#processed_state.all_actions]
   
   --has the street changed since the last action?
   if last_action.street ~= processed_state.current_street then
-    return constants.players.P1
+      return game_settings.first_player[processed_state.current_street]
   end
   
   --is the hand over?
@@ -382,7 +422,7 @@ function ACPCProtocolToNode:_get_acting_player(processed_state)
     return -1
   end
   
-  if processed_state.current_street == 2 and #processed_state.actions[2] >= 2 and last_action.action == constants.acpc_actions.ccall then
+  if processed_state.current_street == constants.streets_count and #processed_state.actions[constants.streets_count] >= 2 and last_action.action == constants.acpc_actions.ccall then
     return -1  
   end
   

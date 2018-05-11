@@ -24,6 +24,9 @@ params.Tensor = torch.FloatTensor
 params.data_directory = '../Data/'
 --- the size of the game's ante, in chips
 params.ante = 100
+--- the size of blinds in chips
+params.small_blind = 1200
+params.big_blind = 1200
 --- the size of each player's stack, in chips
 params.stack = 1200
 --- the number of iterations that DeepStack runs CFR for
