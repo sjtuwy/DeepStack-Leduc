@@ -28,18 +28,37 @@ end
 --  is `1` if the hand shares no cards with the board and `0` otherwise
 function M:get_possible_hand_indexes(board)  
   local out = arguments.Tensor(game_settings.card_count):fill(0)
+  -- support 2 hole cards
+  assert(game_settings.holecard_count == 1 or game_settings.holecard_count == 2)
+  if game_settings.holecard_count == 2 then
+      out = arguments.Tensor(game_settings.card_count * (game_settings.card_count - 1) / 2):fill(0)
+  end
   if board:dim() == 0 then 
     out:fill(1)
     return out
   end
 
-  local whole_hand = arguments.Tensor(board:size(1) + 1)
-  whole_hand[{{1, -2}}]:copy(board)
-  for card = 1, game_settings.card_count do 
-    whole_hand[-1] = card
-    if self:hand_is_possible(whole_hand) then
-      out[card] = 1
-    end
+  local whole_hand = arguments.Tensor(board:size(1) + game_settings.holecard_count)
+  whole_hand[{{1, -1 - game_settings.holecard_count}}]:copy(board)
+  if game_settings.holecard_count == 1 then
+      for card = 1, game_settings.card_count do 
+          whole_hand[-1] = card
+          if self:hand_is_possible(whole_hand) then
+              out[card] = 1
+          end
+      end
+  else
+      for card1 = 1, game_settings.card_count do 
+          for card2 = card1 + 1, game_settings.card_count do
+              whole_hand[-2] = card1
+              whole_hand[-1] = card2
+              if self:hand_is_possible(whole_hand) then
+                  local hand = (card2 - 1) * (card2 - 2) / 2 + (card2 - card1)
+                  assert(hand > 0 and hand <= game_settings.card_count * (game_settings.card_count - 1) / 2)
+                  out[hand] = 1
+              end
+          end
+      end
   end
   return out
 end

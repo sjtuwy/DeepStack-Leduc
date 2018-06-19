@@ -22,6 +22,7 @@
 local math = require 'math'
 local arguments = require 'Settings.arguments'
 local constants = require 'Settings.constants'
+local game_settings = require 'Settings.game_settings'
 local card_tools = require 'Game.card_tools'
 local card_to_string = require 'Game.card_to_string_conversion'
 require 'Tree.strategy_filling'
@@ -118,7 +119,18 @@ function PokerTreeBuilder:_get_children_player_node(parent_node)
   table.insert(children, fold_node)
   
   --2.0 check action
-  if parent_node.current_player == constants.players.P1 and (parent_node.bets[1] == parent_node.bets[2]) then
+  ---limp call
+  if (parent_node.street == 1 and (parent_node.current_player == game_settings.first_player[parent_node.street]) and (parent_node.bets[1] ~= parent_node.bets[2]) and (parent_node.bets[1] == arguments.ante + arguments.big_blind) and (parent_node.bets[2] == arguments.ante + arguments.small_blind)) then
+      local check_node = {}
+      check_node.type = constants.node_types.check
+      check_node.terminal = false
+      check_node.current_player = 3 - parent_node.current_player
+      check_node.street = parent_node.street 
+      check_node.board = parent_node.board
+      check_node.board_string = parent_node.board_string
+      check_node.bets = parent_node.bets:clone():fill(parent_node.bets:max())
+      table.insert(children, check_node)
+  elseif (parent_node.current_player == game_settings.first_player[parent_node.street]) and (parent_node.bets[1] == parent_node.bets[2]) then
     local check_node = {}
     check_node.type = constants.node_types.check
     check_node.terminal = false
@@ -129,7 +141,7 @@ function PokerTreeBuilder:_get_children_player_node(parent_node)
     check_node.bets = parent_node.bets:clone()
     table.insert(children, check_node)
   --transition call
-  elseif parent_node.street == 1 and ( (parent_node.current_player == constants.players.P2 and parent_node.bets[1] == parent_node.bets[2]) or (parent_node.bets[1] ~= parent_node.bets[2] and parent_node.bets:max() < arguments.stack) ) then 
+  elseif parent_node.street < constants.streets_count and ( (parent_node.current_player == 3 - game_settings.first_player[parent_node.street] and parent_node.bets[1] == parent_node.bets[2]) or (parent_node.bets[1] ~= parent_node.bets[2] and parent_node.bets:max() < arguments.stack) ) then 
     local chance_node = {}
     chance_node.node_type = constants.node_types.chance_node
     chance_node.street = parent_node.street
@@ -179,7 +191,7 @@ end
 function PokerTreeBuilder:_get_children_nodes(parent_node)
 
   --is this a transition call node (leading to a chance node)?
-  local call_is_transit = parent_node.current_player == constants.players.P2 and parent_node.bets[1] == parent_node.bets[2] and parent_node.street < constants.streets_count
+  local call_is_transit = parent_node.current_player == 3 - game_settings.first_player[parent_node.street] and parent_node.bets[1] == parent_node.bets[2] and parent_node.street < constants.streets_count
   
   local chance_node = parent_node.current_player == constants.players.chance
   --transition call -> create a chance node

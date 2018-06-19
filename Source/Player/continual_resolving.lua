@@ -23,12 +23,11 @@ end
 -- first node of the game, exact ranges are known for both players, so
 -- opponent cfvs are not necessary for solving.
 function ContinualResolving:resolve_first_node()
-  self.first_node_resolving = Resolving()
   local first_node = {}
   first_node.board = arguments.Tensor{}
   first_node.street = 1
-  first_node.current_player = constants.players.P1
-  first_node.bets = arguments.Tensor{arguments.ante, arguments.ante}
+  first_node.current_player = game_settings.first_player[first_node.street] 
+  first_node.bets = arguments.Tensor{arguments.ante + arguments.big_blind, arguments.ante + arguments.small_blind}
 
   --create the starting ranges
   local player_range = card_tools:get_uniform_range(first_node.board)
